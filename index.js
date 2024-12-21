@@ -14,27 +14,6 @@ app.get("/test", (req, res) => {
 app.get("/validate/:code", async (req, res) => {
   const { code } = req.params;
 
-  try {
-    const { data, error } = await supabase
-      .from("referrals")
-      .select("*")
-      .eq("referral_code", code);
-
-    if (error) throw error;
-
-    if (data.length > 0) {
-      res.json({ success: true, message: `${code} is valid.` });
-    } else {
-      res.json({ success: false, message: `${code} is not valid.` });
-    }
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get("/validating/:code", async (req, res) => {
-  const { code } = req.params;
-
   // Validate referral code format
   if (!/^[a-zA-Z0-9]+$/.test(code)) {
     return res.status(400).json({ error: "Invalid referral code format." });
@@ -71,6 +50,36 @@ app.get("/validating/:code", async (req, res) => {
   }
 });
 
+// GET wallet's Referral Code if exists
+app.get("/getCode/:address", async (req, res) => {
+  const { address } = req.params;
+
+  try {
+    const { data, error } = await supabase
+      .from("referrals")
+      .select("referral_code")
+      .eq("address", address)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error fetching referral code:", error);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
+
+    // If no data or referral_code is null, return false
+    if (!data || !data.referral_code) {
+      return res.status(200).json({ referral_code: false });
+    }
+
+    // else returns the referral_code
+    return res.status(200).json({ referral_code: data.referral_code });
+  } catch (err) {
+    console.error("Unexpected error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 // Storing wallet in table and setting the Tier
 // after connecting wallet, check if wallet connected is in table using the code
 // if yes, pass
@@ -90,7 +99,7 @@ app.post("/check-wallet-referral-code", async (req, res) => {
       .from("referrals")
       .select("*")
       .eq("address", walletAddress)
-      .single();
+      .maybeSingle();
 
     if (fetchError && fetchError.code !== "PGRST116") {
       console.error("Error fetching wallet:", fetchError);
@@ -111,9 +120,9 @@ app.post("/check-wallet-referral-code", async (req, res) => {
         .from("referrals")
         .select("id, tier")
         .eq("referral_code", useReferralCode)
-        .single();
+        .maybeSingle();
 
-      if (referralError && referralError.code !== "PGRST116") {
+      if (referralError) {
         console.error("Error fetching referral:", referralError);
         return res.status(500).json({
           error: "Error checking referral code.",
@@ -190,9 +199,9 @@ app.post("/set-referral-code", async (req, res) => {
       .from("referrals")
       .select("id")
       .eq("referral_code", lowerCaseReferralCode)
-      .single();
+      .maybeSingle();
 
-    if (fetchError && fetchError.code !== "PGRST116") {
+    if (fetchError) {
       console.error("Error checking referral code:", fetchError);
       return res.status(500).json({ error: "Error checking referral code." });
     }
